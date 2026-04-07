@@ -1,7 +1,29 @@
+# Secrets & certs
 .env
 certs/
+
+# Logs
 *.log
+
+# Python
 .venv/
 __pycache__/
 *.pyc
+
+# Cursor / editors
 .cursor/
+.idea/
+.vscode/
+
+# macOS
+.DS_Store
+
+# Go binaries
+*.exe
+*.out
+llmguard/llmguard
+
+# Docker temp files
+*.bak
+*.swp
+docker-compose.override.yaml
