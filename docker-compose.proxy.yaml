@@ -1,0 +1,94 @@
+services:
+
+  # ─────────────────────────────────────────────
+  # LiteLLM — OpenAI-compatible proxy
+  # ─────────────────────────────────────────────
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${LITELLM_DB:-litellm}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse-web:3000}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      STORE_MODEL_IN_DB: "True"
+    volumes:
+      - ./configs/litellm_config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--detailed_debug"]
+    ports:
+      - "${LITELLM_PORT:-4000}:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')\" 2>/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks:
+      - backend
+
+  # ─────────────────────────────────────────────
+  # LLMGuard — safety proxy (Go, custom build)
+  # ─────────────────────────────────────────────
+  llmguard:
+    build:
+      context: .
+      dockerfile: Dockerfile.llmguard
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      LITELLM_URL: http://litellm:4000
+      LLMGUARD_PORT: "8080"
+    volumes:
+      - ./configs/llmguard.yaml:/app/llmguard.yaml:ro
+    ports:
+      - "${LLMGUARD_PORT:-8080}:8080"
+    depends_on:
+      litellm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - backend
+
+  # ─────────────────────────────────────────────
+  # Nginx — TLS termination
+  # ─────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ./configs/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    ports:
+      - "8443:8443"   # → llmguard
+      - "8444:8444"   # → dashboard (placeholder, step 3C)
+      - "3443:3443"   # → langfuse-web
+    depends_on:
+      llmguard:
+        condition: service_healthy
+      langfuse-web:
+        condition: service_healthy
+    healthcheck:
+      # Check nginx worker is alive + config is valid
+      test: ["CMD-SHELL", "nginx -t 2>/dev/null && wget -qO- --no-check-certificate https://localhost:3443/api/public/health | grep -qi ok || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - backend
+
+networks:
+  backend:
+    external: true
+    name: llmprojects_backend

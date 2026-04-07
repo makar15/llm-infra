@@ -1,0 +1,26 @@
+server:
+  port: 8080
+  read_timeout: 120s
+  write_timeout: 120s
+
+upstream:
+  url: http://litellm:4000
+
+scanners:
+  input:
+    - name: TokenLimit
+      max_tokens: 4096
+    - name: PromptInjection
+      threshold: 0.85
+    - name: Toxicity
+      threshold: 0.85
+
+  output:
+    - name: Toxicity
+      threshold: 0.85
+    - name: Relevance
+      threshold: 0.1
+
+logging:
+  level: info
+  format: json
