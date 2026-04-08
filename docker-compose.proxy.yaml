@@ -61,6 +61,29 @@ services:
       - backend
 
   # ─────────────────────────────────────────────
+  # Dashboard — status UI + model list
+  # ─────────────────────────────────────────────
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./configs/dashboard.yaml:/app/dashboard.yaml:ro
+    depends_on:
+      litellm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - backend
+
+  # ─────────────────────────────────────────────
   # Nginx — TLS termination
   # ─────────────────────────────────────────────
   nginx:
@@ -75,6 +98,8 @@ services:
       - "3443:3443"   # → langfuse-web
     depends_on:
       llmguard:
+        condition: service_healthy
+      dashboard:
         condition: service_healthy
       langfuse-web:
         condition: service_healthy
