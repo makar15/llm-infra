@@ -63,6 +63,8 @@ func buildScanner(c config.ScannerConfig) (Scanner, error) {
 			thr = 0.1
 		}
 		return NewRelevance(thr), nil
+	case "PIIGuard":
+		return NewPIIGuard(), nil
 	default:
 		return nil, fmt.Errorf("unknown scanner %q", c.Name)
 	}

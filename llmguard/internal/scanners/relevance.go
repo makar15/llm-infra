@@ -32,7 +32,7 @@ func (r *Relevance) Scan(text string) ScanResult {
 	trimmed := strings.TrimSpace(text)
 
 	// Empty output is never relevant.
-	if len(trimmed) < 10 {
+	if len(trimmed) < 3 {
 		return ScanResult{
 			Scanner: r.Name(),
 			Passed:  false,

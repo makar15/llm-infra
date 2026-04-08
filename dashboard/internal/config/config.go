@@ -21,9 +21,10 @@ type ServerConfig struct {
 }
 
 type ServicesConfig struct {
-	LiteLLM  string `yaml:"litellm"`
-	LangFuse string `yaml:"langfuse"`
-	LLMGuard string `yaml:"llmguard"`
+	LiteLLM       string `yaml:"litellm"`
+	LangFuse      string `yaml:"langfuse"`
+	LLMGuard      string `yaml:"llmguard"`
+	LiteLLMAPIKey string `yaml:"litellm_api_key"`
 }
 
 type LoggingConfig struct {
@@ -52,6 +53,11 @@ func Load(path string) (*Config, error) {
 
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
+	}
+
+	// Allow env var override for the LiteLLM API key.
+	if cfg.Services.LiteLLMAPIKey == "" {
+		cfg.Services.LiteLLMAPIKey = os.Getenv("LITELLM_MASTER_KEY")
 	}
 
 	return cfg, nil

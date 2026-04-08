@@ -81,7 +81,12 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "failed to read request", http.StatusBadRequest)
 			return
 		}
+
+		// Apply PII redaction before scanning.
+		body = redactPII(s.inputScanners, body)
+
 		r.Body = io.NopCloser(bytes.NewReader(body))
+		r.ContentLength = int64(len(body))
 
 		inputText := extractInputText(body)
 		if result := scanners.RunAll(s.inputScanners, inputText); result != nil {
@@ -122,6 +127,8 @@ func (s *Server) proxyWithOutputScan(
 		return
 	}
 	upstreamReq.Header = r.Header.Clone()
+	// Disable compression so we always get plain JSON we can parse.
+	upstreamReq.Header.Del("Accept-Encoding")
 
 	resp, err := http.DefaultClient.Do(upstreamReq)
 	if err != nil {
@@ -200,10 +207,15 @@ func extractOutputText(body []byte) string {
 	for _, c := range resp.Choices {
 		if c.Message.Content != "" {
 			sb.WriteString(c.Message.Content)
-		} else {
+		} else if c.Text != "" {
 			sb.WriteString(c.Text)
 		}
 		sb.WriteByte('\n')
+	}
+	// If no content extracted from choices, fall back to raw body
+	// so output scanners receive something to evaluate.
+	if sb.Len() == 0 {
+		return string(body)
 	}
 	return sb.String()
 }
@@ -216,10 +228,46 @@ type blockedResponse struct {
 
 func writeBlocked(w http.ResponseWriter, r *scanners.ScanResult) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusBadRequest)
+	w.WriteHeader(http.StatusForbidden)
 	_ = json.NewEncoder(w).Encode(blockedResponse{
 		Error:   "request blocked by safety scanner",
 		Scanner: r.Scanner,
 		Reason:  r.Reason,
 	})
+}
+
+// redactPII finds any PIIGuard scanner and applies redaction to the raw body.
+func redactPII(ss []scanners.Scanner, body []byte) []byte {
+	for _, s := range ss {
+		if pii, ok := s.(*scanners.PIIGuard); ok {
+			var req map[string]json.RawMessage
+			if err := json.Unmarshal(body, &req); err != nil {
+				return body
+			}
+			// Redact inside messages array.
+			if rawMsgs, ok := req["messages"]; ok {
+				var msgs []map[string]json.RawMessage
+				if err := json.Unmarshal(rawMsgs, &msgs); err == nil {
+					for i, msg := range msgs {
+						if rawContent, ok := msg["content"]; ok {
+							var content string
+							if err := json.Unmarshal(rawContent, &content); err == nil {
+								redacted := pii.Redact(content)
+								if redacted != content {
+									msgs[i]["content"], _ = json.Marshal(redacted)
+								}
+							}
+						}
+					}
+					if newMsgs, err := json.Marshal(msgs); err == nil {
+						req["messages"] = newMsgs
+					}
+				}
+			}
+			if newBody, err := json.Marshal(req); err == nil {
+				return newBody
+			}
+		}
+	}
+	return body
 }

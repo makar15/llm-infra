@@ -24,3 +24,4 @@ litellm_settings:
   langfuse_public_key: os.environ/LANGFUSE_PUBLIC_KEY
   langfuse_secret_key: os.environ/LANGFUSE_SECRET_KEY
   langfuse_host: os.environ/LANGFUSE_HOST
+  langfuse_base_url: os.environ/LANGFUSE_HOST

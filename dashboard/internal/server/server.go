@@ -103,7 +103,16 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 // ── /api/models ───────────────────────────────────────────────────────────────
 
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
-	resp, err := s.client.Get(s.cfg.Services.LiteLLM + "/models")
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, s.cfg.Services.LiteLLM+"/models", nil)
+	if err != nil {
+		s.log.Error().Err(err).Msg("failed to build models request")
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		return
+	}
+	if s.cfg.Services.LiteLLMAPIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+s.cfg.Services.LiteLLMAPIKey)
+	}
+	resp, err := s.client.Do(req)
 	if err != nil {
 		s.log.Error().Err(err).Msg("failed to fetch models from litellm")
 		http.Error(w, `{"error":"litellm unavailable"}`, http.StatusBadGateway)
